@@ -55,7 +55,9 @@ macOS는 한글 파일명을 **NFD**(자모 분리: `ㅎ+ㅏ+ㄴ`)로 저장하�
 NFC로 고쳐도 **보내는 방법** 때문에 윈도에서 다시 깨질 수 있습니다(직접 테스트로 확인).
 
 - macOS 기본 "압축"으로 만든 zip은 UTF-8 파일명 플래그가 없어 윈도에서 깨짐 → **반디집**으로 압축하세요.
-- 웹 Gmail도 **Chrome은 업로드 시 파일명을 NFD로 되돌립니다**. **Safari로 첨부**하거나 **맥 "메일" 앱**으로 보내면 안전합니다.
+- 웹 Gmail도 **Chrome은 업로드 시 파일명을 NFD로 되돌립니다**([Chromium 버그 125271](https://bugs.chromium.org/p/chromium/issues/detail?id=125271)). 해결 방법:
+  - **Safari로 첨부**하거나 **맥 "메일" 앱**으로 보내기, 또는
+  - 이 저장소의 **[Chrome 확장](chrome-extension/)** 설치 — 업로드 직전에 파일명을 NFC로 정규화해 Chrome에서도 안전하게 첨부됩니다. (설치법은 [chrome-extension/README.md](chrome-extension/README.md))
 
 ## 빌드 / 테스트
 
@@ -92,6 +94,7 @@ NFCNameFixer/
 ├─ tests/
 │  ├─ main.swift               # 복원 단위 테스트
 │  └─ run.sh                   # 테스트 실행
+├─ chrome-extension/           # Chrome 확장 — 업로드 시 NFD→NFC 정규화
 ├─ tools/                      # 앱 아이콘 생성기 (make_icon.swift / .sh)
 ├─ Info.plist                  # LSUIElement=true (메뉴바 전용)
 ├─ build.sh

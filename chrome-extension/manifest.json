@@ -1,0 +1,18 @@
+{
+    "manifest_version": 3,
+    "name": "한글 파일명 NFC 픽서 (NFCNameFixer)",
+    "version": "1.0",
+    "description": "맥에서 파일 업로드 시 Chrome이 한글 파일명을 NFD로 되돌리는 문제를 고칩니다. 업로드 직전에 NFC로 정규화합니다.",
+    "content_scripts": [
+        {
+            "matches": ["<all_urls>"],
+            "js": ["content.js"],
+            "run_at": "document_start",
+            "world": "MAIN",
+            "all_frames": true
+        }
+    ],
+    "icons": {
+        "128": "icon128.png"
+    }
+}
