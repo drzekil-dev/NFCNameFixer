@@ -5,7 +5,7 @@
 [![Release](https://img.shields.io/github/v/release/drzekil-dev/NFCNameFixer)](https://github.com/drzekil-dev/NFCNameFixer/releases/latest)
 ![Swift](https://img.shields.io/badge/Swift-6-orange.svg)
 
-맥에서 만든 한글 파일·폴더 이름을 Windows 호환(NFC)으로 바꿔주는 macOS 메뉴바 앱입니다. (v1.0.1) — 드래그 변환 + 폴더 자동 감시.
+맥에서 만든 한글 파일·폴더 이름을 Windows 호환(NFC)으로 바꿔주는 macOS 메뉴바 앱입니다. (v1.0.2) — 드래그 변환 + 폴더 자동 감시 + Chrome 업로드 픽서 확장.
 
 ## 다운로드
 
