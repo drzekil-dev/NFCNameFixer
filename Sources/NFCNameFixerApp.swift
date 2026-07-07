@@ -219,7 +219,7 @@ struct PanelView: View {
             }
 
             if let r = store.lastResult {
-                Text("마지막 변환: \(r.count)개 · \(timeString(r.date))")
+                Text("마지막 변환: \(r.count)개 · \(dateTimeString(r.date))")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -373,9 +373,9 @@ struct PanelView: View {
         return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
     }
 
-    private func timeString(_ date: Date) -> String {
+    private func dateTimeString(_ date: Date) -> String {
         let f = DateFormatter()
-        f.dateFormat = "HH:mm"
+        f.dateFormat = "yyyy-MM-dd HH:mm"
         return f.string(from: date)
     }
 }
