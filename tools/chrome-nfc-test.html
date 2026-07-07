@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Chrome NFC 유지 테스트</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 680px; margin: 40px auto; padding: 0 20px; color: #222; }
+  h1 { font-size: 20px; }
+  .drop { border: 2px dashed #aaa; border-radius: 14px; padding: 44px; text-align: center;
+          color: #888; background: #fafafa; transition: .15s; }
+  .drop.over { border-color: #4a6cf7; background: #eef2ff; color: #4a6cf7; }
+  .row { margin: 10px 0; }
+  .verdict { font-size: 22px; font-weight: 700; margin: 18px 0; }
+  .ok { color: #1a8f3c; } .bad { color: #c0392b; }
+  code { background: #f0f0f3; padding: 2px 6px; border-radius: 5px; font-size: 13px; }
+  .cps { font-family: ui-monospace, monospace; font-size: 12px; color: #555; word-break: break-all; }
+  button { font-size: 14px; padding: 8px 14px; border-radius: 8px; border: 1px solid #ccc; background:#fff; cursor:pointer; }
+  .hint { color:#888; font-size: 13px; }
+</style>
+</head>
+<body>
+  <h1>Chrome 파일명 NFC 유지 테스트</h1>
+  <p class="hint">앱으로 <b>NFC 변환한 한글 파일</b>을 아래에 드래그하거나 선택하세요.<br>
+  Chrome이 그 파일을 받을 때 이름을 <b>NFC로 유지하는지 / NFD로 되돌리는지</b>를 보여줍니다.<br>
+  (이게 NFC로 나오면, Gmail 웹 등으로 첨부해 보낼 때도 이름이 유지됩니다.)</p>
+
+  <div id="drop" class="drop">여기에 파일을 끌어다 놓기</div>
+  <p><input type="file" id="picker"> <span class="hint">← 또는 파일 선택 버튼으로도 테스트</span></p>
+
+  <div id="result" style="display:none">
+    <div class="row">파일명: <code id="name"></code></div>
+    <div class="verdict" id="verdict"></div>
+    <div class="row cps" id="cps"></div>
+  </div>
+
+<script>
+function cps(s){ return [...s].map(c => 'U+' + c.codePointAt(0).toString(16).toUpperCase().padStart(4,'0')).join(' '); }
+
+function analyze(name){
+  const nfc = name.normalize('NFC');
+  const nfd = name.normalize('NFD');
+  const isNFC = (name === nfc) && (name !== nfd);   // 합성형이고 분해형과 다름
+  const isPlainNFC = (name === nfc);                 // 정규화 무관(ascii 등)도 포함
+  const hasHangul = /[가-힣]/.test(nfc);
+
+  document.getElementById('result').style.display = 'block';
+  document.getElementById('name').textContent = name;
+  document.getElementById('cps').innerHTML = '코드포인트: ' + cps(name);
+
+  const v = document.getElementById('verdict');
+  if (!hasHangul) {
+    v.className = 'verdict'; v.textContent = 'ℹ️ 한글이 없어 NFC/NFD 판정 의미 없음';
+  } else if (name === nfd && name !== nfc) {
+    v.className = 'verdict bad'; v.textContent = '❌ NFD로 바뀜 — Chrome이 분해형으로 되돌림';
+  } else if (isPlainNFC) {
+    v.className = 'verdict ok'; v.textContent = '✅ NFC 유지됨 — 첨부해도 안전';
+  } else {
+    v.className = 'verdict'; v.textContent = '⚠️ 혼합 형태';
+  }
+}
+
+const drop = document.getElementById('drop');
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f) analyze(f.name);
+});
+document.getElementById('picker').addEventListener('change', e => {
+  if (e.target.files[0]) analyze(e.target.files[0].name);
+});
+</script>
+</body>
+</html>
