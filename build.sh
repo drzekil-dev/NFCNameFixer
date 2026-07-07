@@ -18,6 +18,7 @@ swiftc -O \
     Sources/Converter.swift \
     Sources/MojibakeRestorer.swift \
     Sources/NameRestorer.swift \
+    Sources/UpdateChecker.swift \
     Sources/FolderWatcher.swift \
     Sources/WatchStore.swift \
     Sources/NFCNameFixerApp.swift

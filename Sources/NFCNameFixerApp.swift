@@ -120,37 +120,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 struct PanelView: View {
-    enum Mode: Hashable { case toNFC, restore }
+    // [윈도→맥 복원 기능 임시 비활성 — 필요 시 아래 주석과 restoreSection/handleRestoreDrop 주석 해제]
+    // enum Mode: Hashable { case toNFC, restore }
 
     @ObservedObject var store: WatchStore
-    @State private var mode: Mode = .toNFC
+    // @State private var mode: Mode = .toNFC
     @State private var isTargeted = false
     @State private var dropSummary = ""
-    @State private var restoreSummary = ""
+    // @State private var restoreSummary = ""
+
+    private var appVersion: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.0"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("한글 파일명 변환기").font(.headline)
 
-            Picker("", selection: $mode) {
-                Text("맥→윈도 (NFC)").tag(Mode.toNFC)
-                Text("윈도→맥 (복원)").tag(Mode.restore)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            // [복원 모드 전환 UI 비활성]
+            // Picker("", selection: $mode) {
+            //     Text("맥→윈도 (NFC)").tag(Mode.toNFC)
+            //     Text("윈도→맥 (복원)").tag(Mode.restore)
+            // }
+            // .pickerStyle(.segmented)
+            // .labelsHidden()
+            // if mode == .toNFC { nfcSection } else { restoreSection }
 
-            if mode == .toNFC { nfcSection } else { restoreSection }
+            nfcSection
 
             Divider()
 
             HStack {
-                Text("Cmd-Q·닫기는 창만 숨깁니다.")
+                Text("버전 \(appVersion)")
                     .font(.caption2).foregroundStyle(.secondary)
                 Spacer()
+                Button("업데이트 확인") { checkForUpdate() }
                 Button("종료") {
                     NotificationCenter.default.post(name: .nfcQuitRequested, object: nil)
                 }
             }
+            Text("Cmd-Q·닫기는 창만 숨깁니다.")
+                .font(.caption2).foregroundStyle(.secondary)
         }
         .padding(16)
         .frame(width: 360)
@@ -222,8 +232,9 @@ struct PanelView: View {
         }
     }
 
-    // MARK: - 복원 모드 (윈도 → 맥)
+    // MARK: - 복원 모드 (윈도 → 맥) — 현재 버전 비활성 (필요 시 주석 해제)
 
+    /*
     private var restoreSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("윈도에서 받은 깨진 한글 이름을 복원합니다. 폴더·파일을 끌어다 놓으세요(하위 포함).")
@@ -237,6 +248,7 @@ struct PanelView: View {
             }
         }
     }
+    */
 
     // MARK: - 드롭존(공용)
 
@@ -300,7 +312,8 @@ struct PanelView: View {
         }
     }
 
-    /// 깨짐 복원(윈도→맥).
+    /// 깨짐 복원(윈도→맥). — 현재 버전 비활성 (필요 시 주석 해제)
+    /*
     private func handleRestoreDrop(_ providers: [NSItemProvider]) {
         collectPaths(providers) { paths in
             let stats = NameRestorer().run(rootPaths: paths)
@@ -308,6 +321,34 @@ struct PanelView: View {
                 restoreSummary = "복원 \(stats.restored)개 · 검사 \(stats.scanned)개"
                     + (stats.skipped.isEmpty ? "" : " · 건너뜀 \(stats.skipped.count)개")
                     + (stats.errors.isEmpty ? "" : " · 오류 \(stats.errors.count)개")
+            }
+        }
+    }
+    */
+
+    // MARK: - 업데이트 확인
+
+    private func checkForUpdate() {
+        UpdateChecker.check { latest, error in
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                if let error = error {
+                    alert.messageText = "업데이트 확인 실패"
+                    alert.informativeText = error
+                    alert.runModal()
+                } else if let latest = latest, UpdateChecker.isNewer(latest, than: appVersion) {
+                    alert.messageText = "새 버전 \(latest) 있음"
+                    alert.informativeText = "현재 버전 \(appVersion). 다운로드 페이지를 열까요?"
+                    alert.addButton(withTitle: "다운로드 페이지 열기")
+                    alert.addButton(withTitle: "나중에")
+                    if alert.runModal() == .alertFirstButtonReturn {
+                        NSWorkspace.shared.open(UpdateChecker.releasesURL)
+                    }
+                } else {
+                    alert.messageText = "최신 버전입니다"
+                    alert.informativeText = "현재 버전 \(appVersion)"
+                    alert.runModal()
+                }
             }
         }
     }
