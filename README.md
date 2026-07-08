@@ -11,7 +11,9 @@
 
 [**최신 릴리스 다운로드 →**](https://github.com/drzekil-dev/NFCNameFixer/releases/latest)
 
-`NFCNameFixer-<버전>.zip`을 풀어 `NFCNameFixer.app`을 실행하세요. ad-hoc 서명이라 첫 실행 시 **우클릭 → 열기**로 한 번 허용하면 됩니다.
+`NFCNameFixer-<버전>.zip`을 풀어 `NFCNameFixer.app`을 실행하세요. ad-hoc 서명이라 첫 실행 시 **우클릭 → 열기**(macOS 15+는 시스템 설정 → 개인정보 보호 및 보안 → **"그래도 열기"**)로 한 번 허용하면 됩니다.
+
+> "손상되었기 때문에 열 수 없습니다"가 뜨면 2026-07-07 이전에 받은 zip입니다 — 최신 릴리스로 다시 받아주세요.
 
 ![스크린샷](docs/screenshot.png)
 
