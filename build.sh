@@ -17,17 +17,39 @@ trap 'rm -rf "$BUILD_DIR"' EXIT
 echo "▶ 임시 폴더에 번들 조립: $BUILD_DIR"
 mkdir -p "$BUILD_APP/Contents/MacOS" "$BUILD_APP/Contents/Resources"
 
-echo "▶ Swift 컴파일 (-O)"
-swiftc -O \
-    -framework CoreServices -framework ServiceManagement -framework AppKit \
-    -o "$BUILD_APP/Contents/MacOS/$BIN" \
-    Sources/Converter.swift \
-    Sources/MojibakeRestorer.swift \
-    Sources/NameRestorer.swift \
-    Sources/UpdateChecker.swift \
-    Sources/FolderWatcher.swift \
-    Sources/WatchStore.swift \
+# 최소 지원 버전. -target 없이 빌드하면 빌드 머신의 OS 버전이 최소 요구
+# 버전으로 박혀서(예: Tahoe에서 빌드하면 minos 26.0) 구버전 macOS에서
+# "손상됨/열 수 없음"으로 실행이 거부된다. Info.plist의
+# LSMinimumSystemVersion(13.0)과 반드시 일치시킬 것.
+MIN_MACOS="13.0"
+SOURCES=(
+    Sources/Converter.swift
+    Sources/MojibakeRestorer.swift
+    Sources/NameRestorer.swift
+    Sources/UpdateChecker.swift
+    Sources/FolderWatcher.swift
+    Sources/WatchStore.swift
     Sources/NFCNameFixerApp.swift
+)
+
+echo "▶ Swift 컴파일 (-O, macOS $MIN_MACOS+, universal)"
+for ARCH in arm64 x86_64; do
+    swiftc -O \
+        -target "$ARCH-apple-macos$MIN_MACOS" \
+        -framework CoreServices -framework ServiceManagement -framework AppKit \
+        -o "$BUILD_DIR/$BIN-$ARCH" \
+        "${SOURCES[@]}"
+done
+lipo -create -output "$BUILD_APP/Contents/MacOS/$BIN" \
+    "$BUILD_DIR/$BIN-arm64" "$BUILD_DIR/$BIN-x86_64"
+
+echo "▶ 최소 버전/아키텍처 검증"
+MINOS="$(otool -l "$BUILD_APP/Contents/MacOS/$BIN" | awk '/minos/ {print $2; exit}')"
+if [ "$MINOS" != "$MIN_MACOS" ]; then
+    echo "오류: 바이너리 minos($MINOS)가 목표($MIN_MACOS)와 다릅니다." >&2
+    exit 1
+fi
+lipo -info "$BUILD_APP/Contents/MacOS/$BIN"
 
 echo "▶ Info.plist / 아이콘 복사"
 cp Info.plist "$BUILD_APP/Contents/Info.plist"
