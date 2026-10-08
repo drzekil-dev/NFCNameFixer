@@ -300,14 +300,16 @@ struct PanelView: View {
     }
 
     /// NFC 변환(맥→윈도). 폴더는 감시 목록에도 추가.
+    /// 변환은 감시 큐에서 직렬 실행된다(자동 감시 처리와 충돌 방지).
     private func handleNFCDrop(_ providers: [NSItemProvider]) {
         collectPaths(providers) { paths in
-            let stats = NFCConverter().run(rootPaths: paths)
             let dirs = paths.filter { isDirectory($0) }
             DispatchQueue.main.async {
-                dropSummary = "변환 \(stats.renamed)개 · 검사 \(stats.scanned)개"
-                    + (stats.errors.isEmpty ? "" : " · 오류 \(stats.errors.count)개")
-                for dir in dirs { store.addFolder(dir) }
+                store.convert(paths: paths) { stats in
+                    dropSummary = "변환 \(stats.renamed)개 · 검사 \(stats.scanned)개"
+                        + (stats.errors.isEmpty ? "" : " · 오류 \(stats.errors.count)개")
+                    for dir in dirs { store.addFolder(dir) }
+                }
             }
         }
     }

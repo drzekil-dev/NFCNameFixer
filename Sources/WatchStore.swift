@@ -48,22 +48,27 @@ final class WatchStore: ObservableObject {
         if isWatching { watcher.start(paths: watchedFolders) }
     }
 
-    /// "지정 폴더 지금 스캔" — 감시 폴더 전체를 즉시 1회 스캔(백그라운드).
+    /// "지정 폴더 지금 스캔" — 감시 폴더 전체를 즉시 1회 스캔.
+    /// (감시 큐에서 직렬 실행되므로 FSEvents 처리와 같은 트리를 동시에 훑지 않는다.)
     func scanNow() {
         let folders = watchedFolders
         guard !folders.isEmpty else { return }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let stats = NFCConverter().run(rootPaths: folders)
-            DispatchQueue.main.async { self?.lastResult = (stats.renamed, Date()) }
+        watcher.convert(paths: folders) { [weak self] stats in
+            self?.lastResult = (stats.renamed, Date())
         }
     }
 
-    /// 패널이 열릴 때 호출. 감시 중이면 스트림을 새로 생성한다.
-    /// → 보호 폴더 접근 권한(TCC)을 처음 허용한 뒤, 수동 토글 없이 자동 복구됨.
-    ///   (start()는 스트림 재생성 + 시작 스캔을 백그라운드로 수행하므로 UI를 막지 않는다.)
+    /// 드롭된 경로들을 변환한다. 완료 시 통계를 메인 스레드로 전달.
+    func convert(paths: [String], completion: @escaping (ConvertStats) -> Void) {
+        watcher.convert(paths: paths, completion: completion)
+    }
+
+    /// 패널이 열릴 때 호출. 보호 폴더 권한이 없는 채로 감시를 시작했었다면
+    /// (허용 창에서 거부했거나 나중에 설정에서 켠 경우) 스트림을 다시 만든다.
+    /// 정상 동작 중인 스트림은 건드리지 않으므로 창을 열 때마다 전체 스캔이 돌지 않는다.
     func rescanOnAppear() {
         guard isWatching else { return }
-        watcher.start(paths: watchedFolders)
+        watcher.restartIfBlocked()
     }
 
     // MARK: - 로그인 시 시작
