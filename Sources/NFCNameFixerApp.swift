@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "textformat",
-                                   accessibilityDescription: "한글 NFC 변환기")
+                                   accessibilityDescription: "한글모아")
             button.image?.isTemplate = true
             button.action = #selector(statusClicked(_:))
             button.target = self
@@ -43,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let hosting = NSHostingController(rootView: PanelView(store: store))
         hosting.sizingOptions = [.preferredContentSize]
         window = NSWindow(contentViewController: hosting)
-        window.title = "한글 파일명 NFC 변환기"
+        window.title = "한글모아"
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false   // 닫기 버튼은 숨김(orderOut)만, 객체 유지
         window.level = .floating               // 다른 창 위로
@@ -135,7 +135,7 @@ struct PanelView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("한글 파일명 변환기").font(.headline)
+            Text("한글모아").font(.headline)
 
             // [복원 모드 전환 UI 비활성]
             // Picker("", selection: $mode) {

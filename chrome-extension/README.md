@@ -1,4 +1,4 @@
-# 한글 파일명 NFC 픽서 — Chrome 확장
+# 한글모아 — Chrome 확장
 
 macOS의 Chrome은 파일 업로드 시 한글 파일명을 **NFD(자모 분리)로 되돌립니다**
 ([Chromium 버그 125271](https://bugs.chromium.org/p/chromium/issues/detail?id=125271), 2012년부터 미해결).

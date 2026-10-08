@@ -1,5 +1,5 @@
 #!/bin/bash
-# 한글 파일명 NFC 변환기 — 빌드 스크립트
+# 한글모아(NFCNameFixer) — 빌드 스크립트
 # 추가 설치 없이 Xcode 툴체인의 swiftc 만으로 .app 번들을 만든다.
 #
 # 주의: 이 저장소가 iCloud 동기화 폴더(~/Documents 등) 안에 있으면 fileprovider가

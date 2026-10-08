@@ -1,4 +1,4 @@
-// 한글 파일명 NFC 픽서 — NFCNameFixer의 Chrome 확장.
+// 한글모아(NFCNameFixer)의 Chrome 확장 — 업로드 파일명 NFC 픽서.
 //
 // 문제: macOS의 Chrome은 파일 업로드 시 파일명을 NFD(자모 분리)로 만들어
 //       윈도 사용자에게 'ㅎㅏㄴㄱㅡㄹ.hwp'처럼 깨져 보이게 한다. (Chromium 버그 125271, 2012~)
