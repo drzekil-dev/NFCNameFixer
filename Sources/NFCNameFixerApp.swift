@@ -173,8 +173,8 @@ struct PanelView: View {
             Text("폴더·파일을 끌어다 놓으면 NFC로 변환됩니다. 감시 폴더는 자동 변환됩니다.")
                 .font(.caption).foregroundStyle(.secondary)
 
-            dropZone(title: "여기에 폴더 / 파일 끌어다 놓기",
-                     subtitle: "(폴더를 놓으면 감시 목록에도 추가됩니다)",
+            dropZone(title: "여기에 폴더 / 파일 / zip 끌어다 놓기",
+                     subtitle: "(폴더는 감시 목록에 추가, zip은 내부 이름까지 수정)",
                      onDrop: handleNFCDrop)
             if !dropSummary.isEmpty {
                 Text(dropSummary).font(.caption).foregroundStyle(.secondary)
@@ -299,17 +299,11 @@ struct PanelView: View {
         group.notify(queue: .global(qos: .userInitiated)) { done(paths) }
     }
 
-    /// NFC 변환(맥→윈도). 폴더는 감시 목록에도 추가.
-    /// 변환은 감시 큐에서 직렬 실행된다(자동 감시 처리와 충돌 방지).
+    /// 드롭 처리. 분류·변환·요약은 DropProcessor 가 하고, 여기서는 경로 수집과 표시만 한다.
     private func handleNFCDrop(_ providers: [NSItemProvider]) {
         collectPaths(providers) { paths in
-            let dirs = paths.filter { isDirectory($0) }
             DispatchQueue.main.async {
-                store.convert(paths: paths) { stats in
-                    dropSummary = "변환 \(stats.renamed)개 · 검사 \(stats.scanned)개"
-                        + (stats.errors.isEmpty ? "" : " · 오류 \(stats.errors.count)개")
-                    for dir in dirs { store.addFolder(dir) }
-                }
+                store.processDrop(paths: paths) { outcome in dropSummary = outcome.summary }
             }
         }
     }
@@ -368,11 +362,6 @@ struct PanelView: View {
         if panel.runModal() == .OK {
             for url in panel.urls { store.addFolder(url.path) }
         }
-    }
-
-    private func isDirectory(_ path: String) -> Bool {
-        var isDir: ObjCBool = false
-        return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
     }
 
     private func dateTimeString(_ date: Date) -> String {

@@ -58,9 +58,13 @@ final class WatchStore: ObservableObject {
         }
     }
 
-    /// 드롭된 경로들을 변환한다. 완료 시 통계를 메인 스레드로 전달.
-    func convert(paths: [String], completion: @escaping (ConvertStats) -> Void) {
-        watcher.convert(paths: paths, completion: completion)
+    /// 드롭된 경로들을 처리한다(zip 은 내부 이름 수정, 그 외는 NFC 변환).
+    /// 감시 큐에서 직렬 실행되고, 드롭된 폴더는 감시 목록에 추가한다. 결과는 메인 스레드로 전달.
+    func processDrop(paths: [String], completion: @escaping (DropOutcome) -> Void) {
+        watcher.perform({ DropProcessor.process(paths: paths) }) { [weak self] outcome in
+            for dir in outcome.folders { self?.addFolder(dir) }
+            completion(outcome)
+        }
     }
 
     /// 패널이 열릴 때 호출. 보호 폴더 권한이 없는 채로 감시를 시작했었다면

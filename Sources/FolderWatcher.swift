@@ -63,9 +63,15 @@ final class FolderWatcher {
     /// 임의 경로들을 변환한다(드롭·"지금 스캔"). 다른 변환과 직렬로 실행되며,
     /// 완료 시 통계를 메인 스레드로 전달한다.
     func convert(paths targets: [String], completion: @escaping (ConvertStats) -> Void) {
+        perform({ NFCConverter().run(rootPaths: targets) }, completion: completion)
+    }
+
+    /// 파일을 건드리는 작업을 감시 큐에서 직렬로 실행하고 결과를 메인 스레드로 전달한다.
+    /// (드롭 처리 등, 폴더 변환과 같은 트리를 동시에 만지면 안 되는 작업용)
+    func perform<T>(_ work: @escaping () -> T, completion: @escaping (T) -> Void) {
         queue.async {
-            let stats = NFCConverter().run(rootPaths: targets)
-            DispatchQueue.main.async { completion(stats) }
+            let result = work()
+            DispatchQueue.main.async { completion(result) }
         }
     }
 

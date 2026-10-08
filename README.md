@@ -5,7 +5,7 @@
 [![Release](https://img.shields.io/github/v/release/drzekil-dev/NFCNameFixer)](https://github.com/drzekil-dev/NFCNameFixer/releases/latest)
 ![Swift](https://img.shields.io/badge/Swift-6-orange.svg)
 
-**맥 한글 파일명, 윈도우에서도 멀쩡하게.** 맥에서 만든 한글 파일·폴더 이름을 Windows 호환(NFC)으로 바꿔주는 macOS 메뉴바 앱입니다. — 드래그 변환 + 폴더 자동 감시 + Chrome 업로드 픽서 확장.
+**맥 한글 파일명, 윈도우에서도 멀쩡하게.** 맥에서 만든 한글 파일·폴더 이름을 Windows 호환(NFC)으로 바꿔주는 macOS 메뉴바 앱입니다. — 드래그 변환 + zip 내부 이름 수정 + 폴더 자동 감시 + Chrome 업로드 픽서 확장.
 
 ## 다운로드
 
@@ -35,6 +35,7 @@ macOS는 한글 파일명을 **NFD**(자모 분리: `ㅎ+ㅏ+ㄴ`)로 저장하�
 - 변환할 **폴더나 파일을 창의 점선 영역(드롭존)에 끌어다 놓기** → 즉시 변환됩니다. 하위 폴더까지 전부 NFC로 바뀝니다.
 - 이미 정상인 이름·영문(ASCII) 파일은 **건드리지 않으니** 아무거나 던져도 안전합니다.
 - 드롭한 게 폴더면 아래 **감시 목록에도 자동 추가**됩니다.
+- **zip 파일을 직접 드롭**하면 풀지 않고 **zip 내부의 파일명**을 윈도 호환으로 고칩니다(원본 제자리 교체, 비밀번호 zip 가능). 폴더 안에 든 zip은 건드리지 않습니다.
 
 ### 3. 폴더 자동 감시 (핵심)
 - **"감시 폴더 추가…"** 버튼으로 자주 쓰는 폴더(예: 다운로드, 작업 폴더)를 등록합니다.
@@ -56,7 +57,8 @@ macOS는 한글 파일명을 **NFD**(자모 분리: `ㅎ+ㅏ+ㄴ`)로 저장하�
 
 NFC로 고쳐도 **보내는 방법** 때문에 윈도에서 다시 깨질 수 있습니다(직접 테스트로 확인).
 
-- macOS 기본 "압축"으로 만든 zip은 UTF-8 파일명 플래그가 없어 윈도에서 깨짐 → **반디집**으로 압축하세요.
+- macOS 기본 "압축"으로 만든 zip은 내부 이름이 NFD인 데다 UTF-8 파일명 플래그도 없어 윈도에서 깨집니다 → **zip을 드롭존에 끌어다 놓으세요.** 압축을 풀지 않고 내부 항목 이름을 NFC로 고치고 UTF-8 플래그를 켜며, 윈도에서 쓸모없는 `__MACOSX` 항목도 제거합니다. **비밀번호 zip도 됩니다**(이름은 암호화되지 않으므로 비밀번호가 필요 없습니다). Windows 10 이후 탐색기·반디집·7-Zip 모두 올바르게 읽습니다.
+  - 7z·RAR·ALZ·EGG는 이름이 압축 블록 안에 있어 지원하지 않습니다. zip만 됩니다.
 - 웹 Gmail도 **Chrome은 업로드 시 파일명을 NFD로 되돌립니다**([Chromium 버그 125271](https://bugs.chromium.org/p/chromium/issues/detail?id=125271)). 해결 방법:
   - **Safari로 첨부**하거나 **맥 "메일" 앱**으로 보내기, 또는
   - 이 저장소의 **[Chrome 확장](chrome-extension/)** 설치 — 업로드 직전에 파일명을 NFC로 정규화해 Chrome에서도 안전하게 첨부됩니다. (설치법은 [chrome-extension/README.md](chrome-extension/README.md))
@@ -68,7 +70,7 @@ NFC로 고쳐도 **보내는 방법** 때문에 윈도에서 다시 깨질 수 �
 ```bash
 ./build.sh          # NFCNameFixer.app 생성 (없으면 아이콘도 자동 생성)
 open NFCNameFixer.app
-./tests/run.sh      # 복원 로직 단위 테스트 (전부 PASS 확인)
+./tests/run.sh      # 복원 로직 단위 테스트 + zip·드롭 통합 테스트 (전부 PASS 확인)
 ```
 
 ## 동작 원리 (핵심)
@@ -87,6 +89,8 @@ open NFCNameFixer.app
 NFCNameFixer/
 ├─ Sources/
 │  ├─ Converter.swift          # NFC 변환 엔진 (POSIX 기반)
+│  ├─ ZipNameFixer.swift       # zip 내부 이름 NFC 수정 (압축 안 풀고 구조만 재작성)
+│  ├─ DropProcessor.swift      # 드롭 분류·처리·요약 (zip / 그 외) ← 테스트 대상
 │  ├─ FolderWatcher.swift      # FSEvents 폴더 감시 + 누락 방지
 │  ├─ WatchStore.swift         # 설정/상태 (감시 폴더, 자동시작 등)
 │  ├─ UpdateChecker.swift      # GitHub 릴리스 기반 업데이트 확인
@@ -95,6 +99,8 @@ NFCNameFixer/
 │  └─ NameRestorer.swift       # (복원 기능, 현재 비활성) 폴더/파일 깨진 이름 복원
 ├─ tests/
 │  ├─ main.swift               # 복원 단위 테스트
+│  ├─ zip_test.sh, zip/        # zip 수정 통합 테스트 (Finder·비밀번호 zip 픽스처)
+│  ├─ drop_test.sh, drop/      # 드롭 처리 테스트 (GUI 없이)
 │  └─ run.sh                   # 테스트 실행
 ├─ chrome-extension/           # Chrome 확장 — 업로드 시 NFD→NFC 정규화
 ├─ tools/                      # 앱 아이콘 생성기 (make_icon.swift / .sh)

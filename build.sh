@@ -24,6 +24,8 @@ mkdir -p "$BUILD_APP/Contents/MacOS" "$BUILD_APP/Contents/Resources"
 MIN_MACOS="13.0"
 SOURCES=(
     Sources/Converter.swift
+    Sources/ZipNameFixer.swift
+    Sources/DropProcessor.swift
     Sources/MojibakeRestorer.swift
     Sources/NameRestorer.swift
     Sources/UpdateChecker.swift
