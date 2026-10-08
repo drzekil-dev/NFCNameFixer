@@ -13,3 +13,7 @@ echo "▶ zip 내부 이름 수정 테스트"
 echo
 echo "▶ 드롭 처리 테스트"
 ./tests/drop_test.sh
+
+echo
+echo "▶ 감시 폴더 zip 자동 수정 테스트 (약 20초)"
+./tests/auto_test.sh

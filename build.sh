@@ -26,6 +26,7 @@ SOURCES=(
     Sources/Converter.swift
     Sources/ZipNameFixer.swift
     Sources/DropProcessor.swift
+    Sources/ArchiveAutoFixer.swift
     Sources/MojibakeRestorer.swift
     Sources/NameRestorer.swift
     Sources/UpdateChecker.swift
@@ -38,7 +39,7 @@ echo "▶ Swift 컴파일 (-O, macOS $MIN_MACOS+, universal)"
 for ARCH in arm64 x86_64; do
     swiftc -O \
         -target "$ARCH-apple-macos$MIN_MACOS" \
-        -framework CoreServices -framework ServiceManagement -framework AppKit \
+        -framework CoreServices -framework ServiceManagement -framework AppKit -framework UserNotifications \
         -o "$BUILD_DIR/$BIN-$ARCH" \
         "${SOURCES[@]}"
 done

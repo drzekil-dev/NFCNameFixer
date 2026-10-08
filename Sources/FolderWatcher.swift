@@ -1,19 +1,25 @@
 import Foundation
 import CoreServices
 
-/// 지정 폴더(및 하위)를 FSEvents로 감시하다가 NFD 한글 이름이 생기면 NFC로 변환한다.
+/// 지정 폴더(및 하위)를 FSEvents로 감시하다가 NFD 한글 이름이 생기면 NFC로 변환하고,
+/// zip 이 들어오면 내부 항목 이름까지 고친다(`ArchiveAutoFixer`).
 ///
 /// 폴링이 아니라 이벤트(인터럽트형 push) 방식: 평소엔 잠들어 있고 커널이 변경 시점에 깨운다.
 /// 이벤트 유실 가능성(앱 꺼짐, 커널 드롭, 합치기)은 아래로 보강한다:
 ///  - 시작 시 1회 전체 스캔(앱이 꺼져 있던 동안의 누락분 회수)
 ///  - KernelDropped/UserDropped/MustScanSubDirs 플래그가 오면 전체 재스캔
-///  - 외부에서 convert()를 수동 호출(메뉴 "지정 폴더 지금 스캔")
+///  - 외부에서 scan()을 수동 호출(메뉴 "지정 폴더 지금 스캔")
 ///
 /// 동시성: 스트림 상태와 모든 변환(이벤트 처리·수동 스캔·드롭)은 하나의 직렬 큐에서만
 /// 실행한다. 같은 트리를 두 Converter가 동시에 훑으며 서로의 rename을 실패시키는 일이 없다.
 final class FolderWatcher {
     /// 변환이 일어났을 때 (변환 개수)를 메인 스레드로 알린다. UI 갱신용.
     var onConverted: ((Int) -> Void)?
+    /// 압축 파일 처리 결과(수정됨/실패/미지원/해소)를 메인 스레드로 알린다.
+    var onArchiveEvents: (([ArchiveEvent]) -> Void)?
+
+    /// zip 자동 수정기. 설정값(대기 시간 등)은 start() 전에만 바꿀 것.
+    let archives = ArchiveAutoFixer()
 
     private let queue = DispatchQueue(label: "com.dmeta.nfcnamefixer.watch")
     // 아래 상태는 전부 queue 위에서만 읽고 쓴다.
@@ -22,6 +28,7 @@ final class FolderWatcher {
     /// 스트림을 만들 때 열 수 없던 감시 폴더가 있었는지(TCC 보호 폴더 미허용 등).
     /// 사용자가 나중에 권한을 주면 그때 스트림을 다시 만들어야 하므로 기억해 둔다.
     private var blockedAtStart = false
+    private var recheckScheduled = false
 
     /// 감시 시작. 기존 스트림이 있으면 정리 후 재생성한다.
     ///
@@ -35,7 +42,7 @@ final class FolderWatcher {
             guard !paths.isEmpty else { return }
             blockedAtStart = paths.contains { !canOpen($0) }
             createStream()
-            scanAll()
+            process(paths, fromEvent: false)
         }
     }
 
@@ -43,6 +50,7 @@ final class FolderWatcher {
         queue.async { [self] in
             teardownStream()
             paths = []
+            archives.clearPending()
         }
     }
 
@@ -56,14 +64,17 @@ final class FolderWatcher {
             blockedAtStart = current.contains { !canOpen($0) }
             paths = current
             createStream()
-            scanAll()
+            process(current, fromEvent: false)
         }
     }
 
-    /// 임의 경로들을 변환한다(드롭·"지금 스캔"). 다른 변환과 직렬로 실행되며,
-    /// 완료 시 통계를 메인 스레드로 전달한다.
-    func convert(paths targets: [String], completion: @escaping (ConvertStats) -> Void) {
-        perform({ NFCConverter().run(rootPaths: targets) }, completion: completion)
+    /// 폴더들을 지금 한 번 훑는다("지정 폴더 지금 스캔"): 이름 변환 + zip 내부 수정.
+    /// 다른 변환과 직렬로 실행되며, 완료 시 이름 변환 통계를 메인 스레드로 전달한다.
+    func scan(paths targets: [String], completion: @escaping (ConvertStats) -> Void) {
+        queue.async { [self] in
+            let stats = process(targets, fromEvent: false)
+            DispatchQueue.main.async { completion(stats) }
+        }
     }
 
     /// 파일을 건드리는 작업을 감시 큐에서 직렬로 실행하고 결과를 메인 스레드로 전달한다.
@@ -76,6 +87,28 @@ final class FolderWatcher {
     }
 
     // MARK: - queue 전용
+
+    /// 이름 변환 → 압축 파일 검사. 순서가 중요하다(zip 파일 자신의 이름이 먼저 NFC 가 된다).
+    @discardableResult
+    private func process(_ targets: [String], fromEvent: Bool) -> ConvertStats {
+        let stats = NFCConverter().run(rootPaths: targets)
+        if stats.renamed > 0 { notify(stats.renamed) }
+        emit(archives.examine(targets: targets, fromEvent: fromEvent))
+        scheduleRecheckIfNeeded()
+        return stats
+    }
+
+    /// 쓰기 완료를 기다리는 zip 이 있으면 주기적으로 다시 본다. 대기 목록이 비면 멈춘다(폴링 아님).
+    private func scheduleRecheckIfNeeded() {
+        guard archives.hasPending, !recheckScheduled else { return }
+        recheckScheduled = true
+        queue.asyncAfter(deadline: .now() + archives.recheckInterval) { [weak self] in
+            guard let self = self else { return }
+            self.recheckScheduled = false
+            self.emit(self.archives.recheckPending())
+            self.scheduleRecheckIfNeeded()
+        }
+    }
 
     private func createStream() {
         var ctx = FSEventStreamContext(
@@ -119,13 +152,6 @@ final class FolderWatcher {
         stream = nil
     }
 
-    /// 현재 감시 폴더 전체를 1회 스캔(변환).
-    private func scanAll() {
-        guard !paths.isEmpty else { return }
-        let stats = NFCConverter().run(rootPaths: paths)
-        if stats.renamed > 0 { notify(stats.renamed) }
-    }
-
     private func handle(changed: [String], flags: [FSEventStreamEventFlags]) {
         // 드롭/재스캔 신호가 있으면 변경 경로만으로는 부족 → 전체 재스캔.
         let mustRescan = flags.contains { f in
@@ -135,8 +161,7 @@ final class FolderWatcher {
         }
         let targets = mustRescan ? paths : changed
         guard !targets.isEmpty else { return }
-        let stats = NFCConverter().run(rootPaths: targets)
-        if stats.renamed > 0 { notify(stats.renamed) }
+        process(targets, fromEvent: !mustRescan)
     }
 
     /// 디렉터리를 실제로 열 수 있는지(TCC 거부 시 opendir이 EPERM으로 실패한다).
@@ -148,5 +173,10 @@ final class FolderWatcher {
 
     private func notify(_ count: Int) {
         DispatchQueue.main.async { [weak self] in self?.onConverted?(count) }
+    }
+
+    private func emit(_ events: [ArchiveEvent]) {
+        guard !events.isEmpty else { return }
+        DispatchQueue.main.async { [weak self] in self?.onArchiveEvents?(events) }
     }
 }

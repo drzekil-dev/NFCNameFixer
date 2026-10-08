@@ -1,7 +1,9 @@
 import SwiftUI
 import AppKit
+import Combine
 import CoreServices
 import UniformTypeIdentifiers
+import UserNotifications
 
 extension Notification.Name {
     /// 창 안의 "종료" 버튼 → AppDelegate가 받아 실제 종료를 수행.
@@ -21,23 +23,22 @@ struct NFCNameFixerApp: App {
 
 /// 메뉴바 아이콘(NSStatusItem)과 진짜 창(NSWindow)을 관리한다.
 /// 팝오버가 아니라 일반 창이라 Finder에서 파일을 드래그해 와도 창이 닫히지 않는다.
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private var statusItem: NSStatusItem!
     private var window: NSWindow!
     private let store = WatchStore()
     private var userInitiatedQuit = false   // 메뉴 "종료"로만 true
+    private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 메뉴바 아이콘
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "textformat",
-                                   accessibilityDescription: "한글모아")
-            button.image?.isTemplate = true
             button.action = #selector(statusClicked(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])  // 좌클릭=창, 우클릭=메뉴
         }
+        updateStatusIcon(problem: false)
 
         // 창 준비(숨김 상태로 생성). 내용 크기에 맞춰 자동 리사이즈.
         let hosting = NSHostingController(rootView: PanelView(store: store))
@@ -51,6 +52,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 창 안 "종료" 버튼 → 실제 종료.
         NotificationCenter.default.addObserver(
             self, selector: #selector(quitApp), name: .nfcQuitRequested, object: nil)
+
+        // 고치지 못한 파일이 있으면 메뉴바 아이콘을 경고 모양으로(창을 열어 확인할 때까지 유지).
+        // 알림 권한이 없어도 동작하는 주 신호다.
+        store.$hasUnseenProblems
+            .receive(on: RunLoop.main)
+            .sink { [weak self] problem in
+                guard let self = self else { return }
+                if problem && self.window.isVisible {
+                    self.store.markProblemsSeen()     // 창이 열려 있으면 이미 보고 있다
+                } else {
+                    self.updateStatusIcon(problem: problem)
+                }
+            }
+            .store(in: &cancellables)
+
+        // 시스템 알림(보조 신호). 권한은 첫 문제가 생겼을 때 요청한다.
+        UNUserNotificationCenter.current().delegate = self
+        store.onProblems = { [weak self] records in self?.postNotification(records) }
+    }
+
+    private func updateStatusIcon(problem: Bool) {
+        guard let button = statusItem.button else { return }
+        button.image = NSImage(
+            systemSymbolName: problem ? "exclamationmark.triangle.fill" : "textformat",
+            accessibilityDescription: problem ? "한글모아 — 고치지 못한 파일 있음" : "한글모아")
+        button.image?.isTemplate = true
+    }
+
+    private func postNotification(_ records: [ProcessRecord]) {
+        guard let first = records.first else { return }
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            if records.count == 1 {
+                content.title = "고치지 못한 파일: \(first.name.precomposedStringWithCanonicalMapping)"
+                content.body = first.detail
+            } else {
+                content.title = "고치지 못한 파일 \(records.count)개"
+                content.body = records.prefix(3).map { $0.name.precomposedStringWithCanonicalMapping }
+                    .joined(separator: ", ") + (records.count > 3 ? " 외" : "")
+            }
+            center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+        }
+    }
+
+    /// 앱이 앞에 있을 때도 배너를 띄운다.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner])
+    }
+
+    /// 알림을 누르면 창을 열어 기록을 보여 준다.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            if let self = self, !self.window.isVisible { self.toggleWindow(nil) }
+            completionHandler()
+        }
     }
 
     @objc private func toggleWindow(_ sender: Any?) {
@@ -58,6 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.orderOut(nil)
         } else {
             store.rescanOnAppear()             // 권한 부여 후 자동 복구 + 누락 점검
+            store.markProblemsSeen()           // 창을 열었으니 메뉴바 경고는 내린다
             positionUnderStatusItem()
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
@@ -170,7 +231,7 @@ struct PanelView: View {
 
     private var nfcSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("폴더·파일을 끌어다 놓으면 NFC로 변환됩니다. 감시 폴더는 자동 변환됩니다.")
+            Text("폴더·파일을 끌어다 놓으면 NFC로 변환됩니다. 감시 폴더는 zip 내부까지 자동으로 고칩니다.")
                 .font(.caption).foregroundStyle(.secondary)
 
             dropZone(title: "여기에 폴더 / 파일 / zip 끌어다 놓기",
@@ -223,12 +284,54 @@ struct PanelView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
+            recentSection
+
             Divider()
 
             Toggle("로그인 시 시작", isOn: Binding(
                 get: { store.launchAtLogin },
                 set: { store.setLaunchAtLogin($0) }))
                 .toggleStyle(.switch)
+        }
+    }
+
+    // MARK: - 최근 처리 (감시 폴더의 압축 파일)
+
+    /// 감시 폴더에 들어온 zip 의 처리 결과. 문제(고치지 못함)를 맨 위에 보여 준다.
+    /// 아무 표시가 없으면 전부 처리된 것이다.
+    @ViewBuilder
+    private var recentSection: some View {
+        let shown = Array(store.log.displayOrder.prefix(5))
+        if !shown.isEmpty {
+            Divider()
+            HStack {
+                Text("최근 처리").font(.subheadline).bold()
+                if store.log.problemCount > 0 {
+                    Text("확인 필요 \(store.log.problemCount)건")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+                Spacer()
+                Button("지우기") { store.clearLog() }
+                    .buttonStyle(.borderless).font(.caption)
+            }
+            ForEach(shown) { r in
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: r.isProblem ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                        .foregroundStyle(r.isProblem ? Color.orange : Color.green)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(r.name.precomposedStringWithCanonicalMapping)
+                            .lineLimit(1).truncationMode(.middle)
+                        Text(r.detail)
+                            .font(.caption2).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .help(r.path)
+            }
+            if store.log.records.count > shown.count {
+                Text("외 \(store.log.records.count - shown.count)건")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
         }
     }
 

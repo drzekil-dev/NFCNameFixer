@@ -8,6 +8,12 @@ final class WatchStore: ObservableObject {
     @Published private(set) var launchAtLogin: Bool
     /// (변환 개수, 시각) — 마지막 변환 표시용.
     @Published private(set) var lastResult: (count: Int, date: Date)?
+    /// 감시 폴더의 압축 파일 처리 기록(수정됨/실패/미지원).
+    @Published private(set) var log = ProcessLog()
+    /// 사용자가 아직 확인하지 않은 문제가 있는지 — 메뉴바 아이콘을 경고 모양으로 바꾸는 신호.
+    @Published private(set) var hasUnseenProblems = false
+    /// 새 문제가 생겼을 때 호출(시스템 알림용). 메인 스레드.
+    var onProblems: (([ProcessRecord]) -> Void)?
 
     private let watcher = FolderWatcher()
     private let defaults = UserDefaults.standard
@@ -21,6 +27,16 @@ final class WatchStore: ObservableObject {
 
         watcher.onConverted = { [weak self] count in
             self?.lastResult = (count, Date())
+        }
+        watcher.onArchiveEvents = { [weak self] events in
+            guard let self = self else { return }
+            let newProblems = self.log.apply(events)
+            if !newProblems.isEmpty {
+                self.hasUnseenProblems = true
+                self.onProblems?(newProblems)
+            } else if self.log.problemCount == 0 {
+                self.hasUnseenProblems = false      // 문제가 전부 해소됨(파일 교체·삭제)
+            }
         }
         if isWatching { watcher.start(paths: watchedFolders) }
     }
@@ -48,14 +64,26 @@ final class WatchStore: ObservableObject {
         if isWatching { watcher.start(paths: watchedFolders) }
     }
 
-    /// "지정 폴더 지금 스캔" — 감시 폴더 전체를 즉시 1회 스캔.
+    /// "지정 폴더 지금 스캔" — 감시 폴더 전체를 즉시 1회 스캔(이름 변환 + zip 내부 수정).
     /// (감시 큐에서 직렬 실행되므로 FSEvents 처리와 같은 트리를 동시에 훑지 않는다.)
     func scanNow() {
         let folders = watchedFolders
         guard !folders.isEmpty else { return }
-        watcher.convert(paths: folders) { [weak self] stats in
+        watcher.scan(paths: folders) { [weak self] stats in
             self?.lastResult = (stats.renamed, Date())
         }
+    }
+
+    // MARK: - 처리 기록
+
+    /// 사용자가 창을 열어 문제를 봤다 → 메뉴바 경고를 내린다(기록은 남는다).
+    func markProblemsSeen() {
+        if hasUnseenProblems { hasUnseenProblems = false }
+    }
+
+    func clearLog() {
+        log.clear()
+        hasUnseenProblems = false
     }
 
     /// 드롭된 경로들을 처리한다(zip 은 내부 이름 수정, 그 외는 NFC 변환).
